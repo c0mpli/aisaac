@@ -1,0 +1,57 @@
+[project]
+name = "aisaac"
+version = "0.1.0"
+description = "AI that reads an entire scientific field and finds connections humans miss"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+authors = [
+    {name = "Jash"},
+]
+keywords = ["quantum-gravity", "scientific-discovery", "cross-theory", "formula-extraction", "LLM"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "sympy>=1.12",
+    "numpy>=1.26.0",
+    "scipy>=1.12.0",
+    "arxiv>=2.1.0",
+    "PyPDF2>=3.0.0",
+    "pylatexenc>=2.10",
+    "requests>=2.31.0",
+    "scikit-learn>=1.4.0",
+    "matplotlib>=3.8.0",
+    "networkx>=3.2.0",
+    "rich>=13.7.0",
+    "tqdm>=4.66.0",
+    "pyyaml>=6.0.0",
+    "hdbscan>=0.8.33",
+]
+
+[project.optional-dependencies]
+api = ["anthropic>=0.39.0"]
+semantic = ["sentence-transformers>=2.3.0", "umap-learn>=0.5.0"]
+all = ["anthropic>=0.39.0", "sentence-transformers>=2.3.0", "umap-learn>=0.5.0"]
+
+[project.urls]
+Homepage = "https://github.com/c0mpli/aisaac"
+Repository = "https://github.com/c0mpli/aisaac"
+Issues = "https://github.com/c0mpli/aisaac/issues"
+
+[project.scripts]
+aisaac = "aisaac.pipeline.aisaac:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["aisaac*"]

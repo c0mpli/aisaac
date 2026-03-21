@@ -718,6 +718,7 @@ Examples:
   aisaac --tier 2              Scale up to high-impact papers
   aisaac --compare-only        Re-run comparison on existing DB
   aisaac --analyze             Numerical table + prediction gaps + novelty check (no API)
+  aisaac --cite-check          Build citation graph + find novel uncited matches
   aisaac --status              Show pipeline state and DB summary
   aisaac --investigate 3       Deep-dive into conjecture #3
   aisaac --investigate-top 5   Deep-dive into top 5 conjectures
@@ -744,6 +745,10 @@ Examples:
         help="List all conjectures with their status")
     parser.add_argument("--analyze", action="store_true",
         help="Run numerical prediction table + gap analysis + semantic scholar novelty (no API cost)")
+    parser.add_argument("--cite-check", action="store_true",
+        help="Build citation graph from Semantic Scholar and find novel uncited formula matches")
+    parser.add_argument("--structured-extract", action="store_true",
+        help="Re-extract formulas using per-equation structured classification (more accurate, more API calls)")
     parser.add_argument("--reset", action="store_true",
         help="Reset pipeline state (allows re-running from scratch)")
     parser.add_argument("--db", type=str, default=str(DB_PATH),
@@ -914,6 +919,102 @@ Examples:
                         console.print(f"    - {p['title'][:70]} ({p.get('year', '?')}, {p.get('citationCount', 0)} cites)")
                 import time; time.sleep(5)  # Semantic Scholar rate limit
 
+        return
+
+    # ── Citation-aware novelty check ─────────────────────────
+    if args.cite_check:
+        from ..comparison.citation_novelty import (
+            build_citation_index, find_novel_matches,
+        )
+        from ..comparison.engine import ComparisonEngine
+
+        console.print(Panel.fit(
+            "[bold cyan]Citation-Aware Novelty Detection[/bold cyan]",
+            border_style="cyan",
+        ))
+
+        # Step 1: Build citation index from Semantic Scholar
+        console.print("\n[bold]Building citation index from Semantic Scholar...[/bold]")
+        console.print("  (This takes ~3s per paper due to API rate limits)")
+        cites = build_citation_index(pipeline.kb)
+        console.print(f"  Indexed {len(cites)} papers")
+
+        # Step 2: Run comparison
+        console.print("\n[bold]Running cross-theory comparison...[/bold]")
+        comparator = ComparisonEngine(pipeline.kb)
+        results = comparator.compare_all(min_score=0.3)
+        console.print(f"  Found {len(results)} matches")
+
+        # Step 3: Find matches where papers don't cite each other
+        console.print("\n[bold]Finding novel uncited matches...[/bold]")
+        novel = find_novel_matches(pipeline.kb, results, cites)
+
+        if novel:
+            from rich.table import Table
+            table = Table(title=f"Novel Matches: formulas agree but papers don't cite each other ({len(novel)} found)")
+            table.add_column("Theory A")
+            table.add_column("Theory B")
+            table.add_column("Quantity")
+            table.add_column("Score", justify="right")
+            table.add_column("Paper A")
+            table.add_column("Paper B")
+
+            for m in novel[:20]:
+                table.add_row(
+                    m.theory_a, m.theory_b, m.quantity_type,
+                    f"{m.match_score:.2f}",
+                    m.citation_link.paper_a_arxiv,
+                    m.citation_link.paper_b_arxiv,
+                )
+            console.print(table)
+
+            console.print(f"\n  [green]These {len(novel)} matches are the most likely to be genuinely novel.[/green]")
+            console.print("  The papers compute similar quantities but are unaware of each other.")
+        else:
+            console.print("  No novel uncited matches found.")
+
+        return
+
+    # ── Structured re-extraction ──────────────────────────────
+    if args.structured_extract:
+        from ..ingestion.structured_extractor import StructuredExtractor
+        from ..ingestion.latex_parser import LatexParser
+
+        console.print(Panel.fit(
+            "[bold cyan]Structured Per-Equation Extraction[/bold cyan]",
+            border_style="cyan",
+        ))
+
+        extractor = StructuredExtractor(pipeline.kb)
+        parser = LatexParser()
+
+        all_papers = pipeline.kb.conn.execute("SELECT * FROM papers").fetchall()
+        console.print(f"  Papers to process: {len(all_papers)}")
+
+        total_extracted = 0
+        for i, paper in enumerate(all_papers):
+            paper = dict(paper)
+            arxiv_id = paper["arxiv_id"]
+            console.print(f"  [{i+1}/{len(all_papers)}] {paper['title'][:60]}...", style="dim")
+
+            # Get LaTeX source
+            src_path = pipeline.crawler.download_latex_source(arxiv_id)
+            if not src_path:
+                continue
+
+            # Parse equations
+            raw_eqs = parser.parse_file(src_path)
+            if not raw_eqs:
+                continue
+
+            # Classify each equation
+            formulas = extractor.extract_from_equations(paper, raw_eqs)
+            total_extracted += len(formulas)
+
+            if formulas:
+                console.print(f"    → {len(formulas)} key results from {len(raw_eqs)} equations")
+
+        console.print(f"\n  [green]Total: {total_extracted} key results extracted via structured classification[/green]")
         return
 
     # ── Compare only ─────────────────────────────────────────

@@ -29,6 +29,14 @@ Papers (arXiv) ──→ Extract formulas ──→ Normalize notation ──→
 
 ---
 
+## What It Actually Does Well
+
+The system finds the right **questions**, not the right answers. It reads across siloed literatures and surfaces comparisons that no single researcher would think to make.
+
+Example from the first run: "Has anyone compared Myrheim-Meyer dimension estimators in causal sets with spectral dimension from diffusion processes in emergent gravity?" — that's a real question you could email a causal sets researcher about. They might say "obvious" or they might say "huh, nobody has checked that."
+
+The conjectures it generates are not publishable as-is (the LLM hallucinates math — see run reports). But the **cross-theory questions** it identifies are genuine research leads.
+
 ## Run Results
 
 See [docs/results/](docs/results/) for detailed run reports with expert assessments.

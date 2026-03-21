@@ -29,18 +29,9 @@ Papers (arXiv) ──→ Extract formulas ──→ Normalize notation ──→
 
 ---
 
-## First Run Results (Quantum Gravity)
+## Run Results
 
-76 papers across 8 theories. 162 formulas extracted. 17 conjectures generated:
-
-| Status | Count | Example |
-|--------|-------|---------|
-| **Verified** | 4 | η = 2(z-1) connecting asymptotic safety and Horava-Lifshitz |
-| **Known** | 1 | Bekenstein-Hawking entropy universality (system validation) |
-| **Disproved** | 4 | Universal 1/r³ correction structure (counterexample found) |
-| **Inconclusive** | 8 | Universal RG flow structure (can't parse for algebra) |
-
-The system independently derived a relation between the anomalous dimension in asymptotic safety and the Lifshitz scaling exponent — a connection that exists implicitly in the literature but hasn't been stated as an explicit formula.
+See [docs/results/](docs/results/) for detailed run reports with expert assessments.
 
 ---
 

@@ -717,6 +717,7 @@ Examples:
   aisaac --tier 1              Run full pipeline on review papers
   aisaac --tier 2              Scale up to high-impact papers
   aisaac --compare-only        Re-run comparison on existing DB
+  aisaac --analyze             Numerical table + prediction gaps + novelty check (no API)
   aisaac --status              Show pipeline state and DB summary
   aisaac --investigate 3       Deep-dive into conjecture #3
   aisaac --investigate-top 5   Deep-dive into top 5 conjectures
@@ -741,6 +742,8 @@ Examples:
         help="Validate against known cross-theory connections")
     parser.add_argument("--conjectures", action="store_true",
         help="List all conjectures with their status")
+    parser.add_argument("--analyze", action="store_true",
+        help="Run numerical prediction table + gap analysis + semantic scholar novelty (no API cost)")
     parser.add_argument("--reset", action="store_true",
         help="Reset pipeline state (allows re-running from scratch)")
     parser.add_argument("--db", type=str, default=str(DB_PATH),
@@ -852,6 +855,65 @@ Examples:
         for r in reports:
             verdict = r.get("verdict", "unknown")
             console.print(f"  [{verdict}] {r.get('title', '?')[:60]}")
+        return
+
+    # ── Analyze ────────────────────────────────────────────────
+    if args.analyze:
+        from ..comparison.numerical_table import (
+            extract_numerical_predictions, build_comparison_table,
+            find_prediction_gaps, print_numerical_table, print_gap_table,
+        )
+        from ..verification.semantic_scholar import check_novelty_semantic_scholar
+
+        console.print(Panel.fit(
+            "[bold cyan]AIsaac Analysis (no API cost)[/bold cyan]",
+            border_style="cyan",
+        ))
+
+        # 1. Numerical prediction table
+        console.print("\n[bold]Numerical Predictions Across Theories[/bold]")
+        predictions = extract_numerical_predictions(pipeline.kb)
+        if predictions:
+            comparisons = build_comparison_table(predictions)
+            print_numerical_table(comparisons)
+            universal = [c for c in comparisons if c.is_universal]
+            if universal:
+                console.print(f"\n  [green]Universal predictions (3+ theories agree):[/green]")
+                for c in universal:
+                    console.print(f"    {c.quantity_type}: {c.consensus_value} ({', '.join(c.theories_agree)})")
+        else:
+            console.print("  No numerical predictions extracted. Most formulas are symbolic.")
+
+        # 2. Prediction gaps
+        console.print("\n[bold]Prediction Gaps (Research Opportunities)[/bold]")
+        gaps = find_prediction_gaps(pipeline.kb)
+        if gaps:
+            print_gap_table(gaps)
+        else:
+            console.print("  No gaps found.")
+
+        # 3. Semantic Scholar novelty check on existing conjectures
+        conjectures = pipeline.kb.get_conjectures()
+        verified = [c for c in conjectures if c.get("status") in ("verified", "known")]
+        if verified:
+            console.print(f"\n[bold]Semantic Scholar Novelty Check ({len(verified)} conjectures)[/bold]")
+            for c in verified:
+                theories = c.get("theories_involved", [])
+                if isinstance(theories, str):
+                    import json as _json
+                    theories = _json.loads(theories)
+                title = c.get("title", "")
+                qt = c.get("conjecture_type", "")
+                result = check_novelty_semantic_scholar(theories, qt, title)
+                status = "[green]NOVEL[/green]" if result.is_novel else "[yellow]KNOWN[/yellow]" if result.is_novel is False else "[dim]UNCERTAIN[/dim]"
+                console.print(f"  {status} {title[:60]}")
+                console.print(f"    Query: {result.search_query}")
+                console.print(f"    {result.explanation}")
+                if result.related_papers:
+                    for p in result.related_papers[:3]:
+                        console.print(f"    - {p['title'][:70]} ({p.get('year', '?')}, {p.get('citationCount', 0)} cites)")
+                import time; time.sleep(5)  # Semantic Scholar rate limit
+
         return
 
     # ── Compare only ─────────────────────────────────────────

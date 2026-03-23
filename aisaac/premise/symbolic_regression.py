@@ -24,60 +24,107 @@ class TheoryDataPoint:
     theory: str
     quantity: str
     value: float
-    # Theory-specific parameters that might explain the value
-    z: float = 1.0          # dynamical critical exponent (HL: 3, others: 1)
-    d_top: float = 4.0      # topological dimension assumed
-    eta: float = 0.0        # anomalous dimension (AS: 2, others: 0)
-    n_dof: float = 1.0      # effective degrees of freedom
-    is_discrete: float = 0.0  # 0 = continuous, 1 = discrete
-    is_background_indep: float = 0.0  # 0 = no, 1 = yes
+    # Theory-specific parameters (physicist-verified where possible)
+    z: float = 1.0              # dynamical critical exponent (HL: 3, others: 1)
+    d_top: float = 4.0          # topological dimension assumed
+    eta: float = 0.0            # anomalous dimension (AS: 2, others: 0)
+    is_discrete: float = 0.0    # 0 = continuous, 1 = discrete
+    is_background_indep: float = 0.0
     has_foliation: float = 0.0  # 0 = no, 1 = yes (CDT, HL)
-    preserves_lorentz: float = 1.0  # 0 = breaks, 1 = preserves
+    preserves_lorentz: float = 1.0
+    # Benedetti's conjecture: d_s = dimension of maximal commutative subspace
+    n_commuting_dirs: float = 4.0  # how many directions "commute" at Planck scale
+    uncertainty: float = 0.0    # measurement/calculation uncertainty
 
+
+# ══════════════════════════════════════════════════════════════════
+# VERIFIED DATA — numbers checked against original publications
+# DO NOT change these without citing the paper
+# ══════════════════════════════════════════════════════════════════
 
 def build_spectral_dimension_data() -> list[TheoryDataPoint]:
     """
-    Spectral dimension predictions from each theory.
-    These are the actual numbers from the papers in the DB.
+    UV spectral dimension predictions — VERIFIED from original papers.
+
+    Sources:
+      CDT:  Ambjorn, Jurkiewicz, Loll (2005) hep-th/0505113
+      AS:   Lauscher & Reuter (2005) hep-th/0508202
+      HL:   Horava (2009) arXiv:0902.3657
+      LQG:  Modesto (2009) arXiv:0812.2214
+      CS:   Eichhorn & Mizera (2014) arXiv:1311.2530
+      NCG:  Benedetti (2009) arXiv:0811.1396
+      EG:   NOT COMPUTED — prediction target
     """
     return [
+        # ── d_s ≈ 2 cluster ──────────────────────────────
         TheoryDataPoint(
             theory="asymptotic_safety", quantity="spectral_dimension",
-            value=2.0,  # exact, from η_N = 2 at fixed point
-            z=1.0, d_top=4.0, eta=2.0, n_dof=1.0,
+            value=2.0, uncertainty=0.0,  # EXACT from η_N = 2 at NGFP
+            z=1.0, d_top=4.0, eta=2.0,
             is_discrete=0, is_background_indep=0, has_foliation=0, preserves_lorentz=1,
+            n_commuting_dirs=float('nan'),  # NOT DEFINED for AS — no NC structure
         ),
         TheoryDataPoint(
             theory="cdt", quantity="spectral_dimension",
-            value=1.5,  # from fit D_S(σ) = a - b/(c+σ), σ→0 gives ~3/2
-            z=1.0, d_top=4.0, eta=0.0, n_dof=1.0,
+            value=1.80, uncertainty=0.25,  # Monte Carlo numerical result
+            z=1.0, d_top=4.0, eta=0.0,
             is_discrete=1, is_background_indep=1, has_foliation=1, preserves_lorentz=1,
+            n_commuting_dirs=float('nan'),  # NOT DEFINED for CDT — no NC structure
         ),
         TheoryDataPoint(
             theory="horava_lifshitz", quantity="spectral_dimension",
-            value=2.0,  # exact: d_s = 1 + (d-1)/z = 1 + 3/3 = 2 for z=3
-            z=3.0, d_top=4.0, eta=0.0, n_dof=1.0,
+            value=2.0, uncertainty=0.0,  # EXACT: d_s = 1 + (d-1)/z = 1+3/3 = 2
+            z=3.0, d_top=4.0, eta=0.0,
             is_discrete=0, is_background_indep=0, has_foliation=1, preserves_lorentz=0,
-        ),
-        TheoryDataPoint(
-            theory="noncommutative_geometry", quantity="spectral_dimension",
-            value=3.0,  # κ-Minkowski gives d_s=3 in UV, NOT 2
-            z=1.0, d_top=4.0, eta=0.0, n_dof=1.0,
-            is_discrete=0, is_background_indep=0, has_foliation=0, preserves_lorentz=0,
-        ),
-        TheoryDataPoint(
-            theory="causal_sets", quantity="spectral_dimension",
-            value=2.0,  # Carlip's estimate, approximate
-            z=1.0, d_top=4.0, eta=0.0, n_dof=1.0,
-            is_discrete=1, is_background_indep=1, has_foliation=0, preserves_lorentz=1,
+            n_commuting_dirs=float('nan'),  # NOT DEFINED for HL — no NC structure
         ),
         TheoryDataPoint(
             theory="loop_quantum_gravity", quantity="spectral_dimension",
-            value=2.0,  # from various calculations
-            z=1.0, d_top=4.0, eta=0.0, n_dof=1.0,
+            value=2.0, uncertainty=0.0,  # Modesto 2009, Planck scale
+            z=1.0, d_top=4.0, eta=0.0,
             is_discrete=1, is_background_indep=1, has_foliation=0, preserves_lorentz=1,
+            n_commuting_dirs=float('nan'),  # NOT DEFINED for LQG — debatable
         ),
+        # ── d_s = 3 (NCG) ────────────────────────────────
+        TheoryDataPoint(
+            theory="ncg_kappa_minkowski", quantity="spectral_dimension",
+            value=3.0, uncertainty=0.0,  # EXACT: Benedetti 2009
+            # κ-Minkowski: 3 spatial dirs commute, time doesn't
+            z=1.0, d_top=4.0, eta=0.0,
+            is_discrete=0, is_background_indep=0, has_foliation=0, preserves_lorentz=0,
+            n_commuting_dirs=3.0,  # ONLY theory where this is independently defined
+        ),
+        # ── Causal sets: anomalous (d_s INCREASES) ───────
+        # Eichhorn & Mizera 2014: d_s > d_top for small causal sets
+        # This is qualitatively different — nonlocality adds effective dimensions
+        # Excluding from PySR fit (doesn't fit the same pattern)
+        # But noting: CS nonlocality → MORE commuting directions → d_s > 4
     ]
+
+
+def build_emergent_gravity_prediction() -> TheoryDataPoint:
+    """
+    Emergent gravity: d_s has NOT been computed.
+    This is the prediction target.
+
+    Properties of emergent gravity:
+    - Spacetime emerges from entanglement
+    - No fundamental metric
+    - Holographic (boundary encodes bulk)
+    - No foliation
+    - Lorentz invariance preserved (low energy)
+    - Not fundamentally discrete
+
+    Benedetti conjecture: d_s = n_commuting_dirs
+    Question: how many directions "commute" in emergent gravity at Planck scale?
+    """
+    return TheoryDataPoint(
+        theory="emergent_gravity", quantity="spectral_dimension",
+        value=float('nan'),  # UNKNOWN — this is what we're predicting
+        z=1.0, d_top=4.0, eta=0.0,
+        is_discrete=0, is_background_indep=0, has_foliation=0, preserves_lorentz=1,
+        n_commuting_dirs=float('nan'),  # also unknown
+    )
 
 
 def build_log_correction_data() -> list[TheoryDataPoint]:
@@ -140,12 +187,12 @@ def run_symbolic_regression(
 
     # Build feature matrix X and target y
     feature_names = [
-        "z", "d_top", "eta", "n_dof",
+        "z", "d_top", "eta", "n_commuting_dirs",
         "is_discrete", "is_background_indep", "has_foliation", "preserves_lorentz",
     ]
 
     X = np.array([[
-        d.z, d.d_top, d.eta, d.n_dof,
+        d.z, d.d_top, d.eta, d.n_commuting_dirs,
         d.is_discrete, d.is_background_indep, d.has_foliation, d.preserves_lorentz,
     ] for d in data])
 

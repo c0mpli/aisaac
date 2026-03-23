@@ -1,0 +1,76 @@
+{
+  "run1_best_equation": "abs((preserves_lorentz + causality_fundamental) - 1.6) + 1.4",
+  "run1_best_loss": 0.0,
+  "run2_best_equation": "abs((1.6 - has_foliation) - preserves_lorentz) + 1.4",
+  "run2_best_loss": 0.0,
+  "emergent_gravity_run1": 2.0,
+  "emergent_gravity_run2": 2.0,
+  "causal_sets_run1": 1.7999999999999998,
+  "causal_sets_run2": 2.0,
+  "verified_data": {
+    "theory": [
+      "AS",
+      "CDT",
+      "HL",
+      "LQG",
+      "NCG_kappa"
+    ],
+    "d_s": [
+      2.0,
+      1.8,
+      2.0,
+      2.0,
+      3.0
+    ],
+    "d_s_error": [
+      0.0,
+      0.25,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "preserves_lorentz": [
+      1,
+      1,
+      0,
+      1,
+      0
+    ],
+    "has_foliation": [
+      0,
+      1,
+      1,
+      0,
+      0
+    ],
+    "is_discrete": [
+      0,
+      1,
+      0,
+      1,
+      0
+    ],
+    "z_exponent": [
+      2,
+      2,
+      3,
+      2,
+      1
+    ],
+    "background_independent": [
+      0,
+      1,
+      0,
+      1,
+      0
+    ],
+    "causality_fundamental": [
+      0,
+      1,
+      1,
+      0,
+      0
+    ]
+  },
+  "notes": "5 data points, overfitting guaranteed. Value is in interpretability not R\u00b2."
+}

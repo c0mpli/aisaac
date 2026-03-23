@@ -1,0 +1,57 @@
+{
+  "spectral_dimension_uv": {
+    "description": "UV spectral dimension at Planck scale",
+    "verified_by": "Hand-checked against original publications, March 2026",
+    "predictions": {
+      "asymptotic_safety": {
+        "value": 2.0,
+        "error": 0.0,
+        "type": "exact_analytical",
+        "source": "Lauscher & Reuter 2005, hep-th/0508202",
+        "notes": "From η_N = 2 at non-Gaussian fixed point"
+      },
+      "cdt": {
+        "value": 1.80,
+        "error": 0.25,
+        "type": "numerical_monte_carlo",
+        "source": "Ambjorn, Jurkiewicz, Loll 2005, hep-th/0505113",
+        "notes": "Monte Carlo simulation. Fit formula D_S(σ) = a - b/(c+σ) gives ~3/2 at σ→0, but raw MC gives 1.80±0.25"
+      },
+      "horava_lifshitz": {
+        "value": 2.0,
+        "error": 0.0,
+        "type": "exact_analytical",
+        "source": "Horava 2009, arXiv:0902.3657",
+        "notes": "d_s = 1 + (D-1)/z = 1 + 3/3 = 2 for z=3, D=4"
+      },
+      "loop_quantum_gravity": {
+        "value": 2.0,
+        "error": 0.0,
+        "type": "exact_analytical",
+        "source": "Modesto 2009, arXiv:0812.2214",
+        "notes": "Spin foam calculation. Space-TIME d_s=2 at Planck scale. Spatial section gives d_s=1.5 at intermediate scales. Trans-Planckian gives d_s=4 or 8/3 depending on area spectrum."
+      },
+      "ncg_kappa_minkowski": {
+        "value": 3.0,
+        "error": 0.0,
+        "type": "exact_analytical",
+        "source": "Benedetti 2009, arXiv:0811.1396",
+        "notes": "κ-Minkowski spacetime. 3 commuting spatial dirs, time noncommuting → d_s=3. Benedetti conjecture: d_s = dim(maximal commutative subspace)"
+      },
+      "causal_sets": {
+        "value": null,
+        "error": null,
+        "type": "anomalous",
+        "source": "Eichhorn & Mizera 2014, arXiv:1311.2530",
+        "notes": "ANOMALOUS: d_s INCREASES beyond d_top for small causal sets. Does not follow the d_s→2 pattern. Excluded from PySR fits."
+      },
+      "emergent_gravity": {
+        "value": null,
+        "error": null,
+        "type": "not_computed",
+        "source": "No paper has computed this",
+        "notes": "PySR prediction from cross-theory pattern: d_s = 2.0"
+      }
+    }
+  }
+}

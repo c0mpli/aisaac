@@ -198,6 +198,7 @@ aisaac/
 │   ├── reframer.py               # 5 breakthrough patterns → premise shifts
 │   ├── premise_ranker.py         # Score shifts (no LLM, pure computation)
 │   ├── equation_interrogator.py  # Pure sympy: symmetries, coefficients, limits
+│   ├── symbolic_regression.py    # PySR on cross-theory predictions (Planck's method)
 │   └── report_generator.py       # Structured premise reports
 │
 ├── breakthrough/           # Historical pattern matcher
@@ -207,6 +208,9 @@ aisaac/
 │   ├── matcher.py          # ML pattern matching (RandomForest)
 │   ├── augmenter.py        # Data augmentation for small dataset
 │   └── report.py           # Full breakthrough analysis report
+│
+├── analysis/               # Standalone analysis scripts
+│   └── verified_pysr.py    # PySR on hand-verified spectral dimension data
 │
 ├── conjecture/             # Hypothesis generation
 │   └── generator.py        # Sympy-verified conjecture generation

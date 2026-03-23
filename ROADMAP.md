@@ -1,9 +1,40 @@
 # AIsaac Roadmap
 
-## Current State (v0.1 — March 2026)
+## Current State (v0.2 — March 2026)
+
+### Core Pipeline
 - 76 papers ingested, 162 formulas extracted across 8 QG theories
 - 17 conjectures generated, 4 verified, 1 known rediscovered, 4 disproved
-- Full pipeline working: ingest → extract → compare → cluster → conjecture → verify → report
+- 11/14 known connections recalled (79%)
+- Full pipeline: ingest → extract → compare → cluster → conjecture → verify → report
+
+### Premise Discovery Engine (NEW)
+- 876 assumptions extracted from 76 papers
+- 91 contradictions found across 28 theory pairs
+- 9 convergent results (all premise-independent)
+- 39 ranked premise shifts from 5 breakthrough patterns
+- 226 obstacles cataloged (212 universal)
+
+### Breakthrough Pattern Matcher (NEW)
+- 35 historical breakthroughs dataset (labeled symptoms → fix)
+- 9 symptom types detected in current QG field (66 total symptoms)
+- RandomForest pattern matching against historical paradigm shifts
+
+### Symbolic Regression (NEW)
+- PySR on hand-verified spectral dimension data (5 theories)
+- Best formula: d_s = |1.6 - lorentz - foliation| + 1.4
+- Emergent gravity prediction: d_s = 2.0
+- Honest: 5 data points, overfitting guaranteed
+
+### Multi-Backend LLM Routing (NEW)
+- 5 backends: Anthropic, Gemini, OpenAI, Claude Code CLI, proxy
+- Agent-specific routing (Gemini Flash for extraction, Pro for reasoning, GPT for creativity)
+
+### Key Finding
+All 8 QG theories assume continuous spacetime (876 assumptions, keyword analysis). Even "discrete" theories (LQG, causal sets) use continuous manifold math as scaffolding. This is known to physicists but systematically confirmed from data for the first time.
+
+### Current Bottleneck
+LLM-extracted numerical values are unreliable. PySR needs hand-verified numbers from original papers. ~50 values across 6-8 quantities need physicist verification.
 
 ---
 

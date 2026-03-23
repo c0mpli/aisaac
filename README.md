@@ -11,21 +11,48 @@ No single researcher can hold 50,000 papers in their head. AIsaac can.
 ## What It Does
 
 ```
+                              AIsaac Pipeline
+                              ==============
+
 Papers (arXiv) ──→ Extract formulas ──→ Normalize notation ──→ Compare across theories
                         (LLM)              (sympy + LLM)          (6 levels)
                                                                       │
                     ┌─────────────────────────────────────────────────┘
+                    ▼
+              ML clustering ──→ Equation Interrogator ──→ Report
+            (embed + HDBSCAN)     (pure sympy, no LLM)
+
+                              Premise Engine
+                              ==============
+
+Papers ──→ Extract assumptions ──→ Find contradictions ──→ Shared failure analysis
+              (explicit + implicit)    (between theories)     (what do all share?)
                     │
                     ▼
-              ML clustering ──→ Generate conjectures ──→ Verify ──→ Report
-            (embed + HDBSCAN)        (LLM)           (algebra +     (LaTeX
-                                                      numerical +    paper
-                                                      dimensional)   draft)
+           Catalog obstacles ──→ Generate premise shifts ──→ Rank shifts
+           (per theory + universal)  (5 breakthrough patterns)  (no LLM, pure scoring)
+
+                          Breakthrough Pattern Matcher
+                          ============================
+
+35 historical breakthroughs ──→ Detect symptoms in current field
+  (labeled: symptoms → fix)        (pure data analysis, no LLM)
+                                          │
+                                          ▼
+                                   Pattern match ──→ "QG today looks like
+                                   (RandomForest)     pre-Einstein 1905.
+                                                      The fix then was X.
+                                                      Applied here: Y."
 ```
 
 **Input:** A scientific field defined by its competing theories, seed papers, and comparable quantities.
 
-**Output:** Ranked conjectures about cross-theory connections, with verification status and evidence chains back to specific papers and formulas.
+**Output:**
+- Cross-theory formula matches and prediction gaps
+- Extracted assumptions and contradictions between theories
+- Ranked premise shifts (which assumptions to question)
+- Historical breakthrough pattern matches (what does the current field's symptom profile resemble?)
+- Equation interrogation results (pure math, no LLM — symmetries, coefficients, limits)
 
 ---
 
@@ -69,21 +96,29 @@ This validates the full pipeline on manually seeded formulas — comparison engi
 
 ### 3. Run the full pipeline
 
-Pick one backend:
+Pick one or more backends (put keys in `.env` for convenience):
 
 ```bash
-# Option A: Anthropic API (pay-per-token, ~$3-5 for Tier 1)
-export ANTHROPIC_API_KEY=sk-ant-...
+# Option A: Gemini (cheapest for premise discovery)
+echo 'GEMINI_API_KEY=...' >> .env
+uv run aisaac --premises
+
+# Option B: Anthropic API (best for formula extraction)
+echo 'ANTHROPIC_API_KEY=sk-ant-...' >> .env
 uv run aisaac --tier 1
 
-# Option B: Claude Code CLI (uses your Pro/Max subscription, no extra cost)
+# Option C: OpenAI (best for creative reframing)
+echo 'OPENAI_API_KEY=sk-...' >> .env
+
+# Option D: Claude Code CLI (free with Pro/Max subscription)
 # Install: npm i -g @anthropic-ai/claude-code && claude login
 uv run aisaac --tier 1
 
-# Option C: Any OpenAI-compatible proxy
-export AISAAC_PROXY_URL=http://localhost:8317/v1
-uv run aisaac --tier 1
+# Option E: Any OpenAI-compatible proxy
+echo 'AISAAC_PROXY_URL=http://localhost:8317/v1' >> .env
 ```
+
+Multi-backend routing is automatic. Each agent routes to its preferred backend (Gemini Flash for extraction, Gemini Pro for reasoning, GPT for creative reframing). Falls back to whatever is available.
 
 ### 4. Check results
 
@@ -134,41 +169,66 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full step-by-step guide.
 
 ```
 aisaac/
-├── ingestion/          # Paper reading and formula extraction
-│   ├── crawler.py      # arXiv bulk download (tiered: 200 → 2K → 10K papers)
-│   ├── extractor.py    # LLM-powered formula extraction + classification
-│   ├── latex_parser.py # Pre-parse LaTeX equations for structured LLM input
-│   ├── deduplicator.py # Same formula in different papers = one entry
+├── ingestion/              # Paper reading and formula extraction
+│   ├── crawler.py          # arXiv bulk download (tiered: 200 → 2K → 10K)
+│   ├── extractor.py        # LLM formula extraction + classification
+│   ├── structured_extractor.py  # Per-equation classification (more accurate)
+│   ├── latex_parser.py     # Pre-parse LaTeX equations
+│   ├── deduplicator.py     # Deduplicate formulas across papers
 │   └── citation_graph.py
 │
-├── knowledge/          # Structured knowledge base
-│   ├── base.py         # SQLite storage: papers, formulas, predictions, conjectures
-│   ├── normalizer.py   # Translate all notation to common symbols (κ²/16π → G)
-│   └── known_connections.py  # Ground truth for validation
+├── knowledge/              # Structured storage
+│   ├── base.py             # SQLite: papers, formulas, assumptions, contradictions,
+│   │                       #         obstacles, premise_shifts, conjectures
+│   ├── normalizer.py       # Notation normalization (κ²/16π → G)
+│   └── known_connections.py
 │
-├── comparison/         # Multi-level comparison engine
-│   ├── engine.py       # Structural, dimensional, numerical, limit matching
-│   └── symmetry.py     # Compare symmetry structures across theories
+├── comparison/             # Formula comparison
+│   ├── engine.py           # Structural, dimensional, numerical, limit matching
+│   ├── symmetry.py         # Cross-theory symmetry comparison
+│   ├── numerical_table.py  # Numerical prediction table + gap analysis
+│   └── citation_novelty.py # Semantic Scholar citation-aware novelty
 │
-├── ml/                 # Pattern detection
-│   ├── patterns.py     # Formula embeddings, HDBSCAN clustering, anomaly detection
-│   └── semantic.py     # Sentence-transformer semantic matching
+├── premise/                # Premise discovery engine (7 agents)
+│   ├── assumption_extractor.py   # Extract explicit + implicit assumptions
+│   ├── contradiction_finder.py   # Find where theories' premises clash
+│   ├── convergence_analyzer.py   # Find premise-independent results
+│   ├── shared_failure_analyzer.py # What do all failed approaches share?
+│   ├── obstacle_cataloger.py     # Map obstacles, highlight universal ones
+│   ├── reframer.py               # 5 breakthrough patterns → premise shifts
+│   ├── premise_ranker.py         # Score shifts (no LLM, pure computation)
+│   ├── equation_interrogator.py  # Pure sympy: symmetries, coefficients, limits
+│   └── report_generator.py       # Structured premise reports
 │
-├── conjecture/         # Hypothesis generation
-│   └── generator.py    # LLM proposes connections from comparison evidence
+├── breakthrough/           # Historical pattern matcher
+│   ├── dataset.py          # 35 labeled breakthroughs (symptoms → fix)
+│   ├── symptoms.py         # Symptom taxonomy (9 types)
+│   ├── detector.py         # Detect symptoms in current field (no LLM)
+│   ├── matcher.py          # ML pattern matching (RandomForest)
+│   ├── augmenter.py        # Data augmentation for small dataset
+│   └── report.py           # Full breakthrough analysis report
 │
-├── verification/       # Verify proposed conjectures
-│   └── engine.py       # Algebraic (sympy), numerical, dimensional, counterexample, novelty
+├── conjecture/             # Hypothesis generation
+│   └── generator.py        # Sympy-verified conjecture generation
 │
-├── pipeline/           # Orchestration
-│   ├── aisaac.py       # Main pipeline controller (10-phase, resumable)
-│   ├── config.py       # Domain configuration (theories, quantities, settings)
-│   ├── llm_client.py   # 3-backend LLM client with retry + caching
-│   └── state.py        # Crash-safe checkpoint system
+├── verification/           # Verification
+│   ├── engine.py           # Algebraic, numerical, dimensional checks
+│   └── semantic_scholar.py # Literature novelty check (free API)
+│
+├── ml/                     # Pattern detection
+│   ├── patterns.py         # Formula embeddings + HDBSCAN clustering
+│   └── semantic.py         # Sentence-transformer matching
+│
+├── pipeline/               # Orchestration
+│   ├── aisaac.py           # Main controller (resumable, 15+ CLI commands)
+│   ├── config.py           # Domain configuration
+│   ├── llm_client.py       # 5-backend LLM client (Anthropic, Gemini, OpenAI,
+│   │                       #   Claude Code CLI, proxy) with agent routing
+│   └── state.py            # Crash-safe checkpoints
 │
 └── output/
-    ├── paper_writer.py     # Generate LaTeX paper draft
-    └── visualizations.py   # UMAP plots, theory connection graphs
+    ├── paper_writer.py     # LaTeX paper draft
+    └── visualizations.py   # UMAP plots, connection graphs
 ```
 
 ---
@@ -191,14 +251,37 @@ aisaac/
 ## CLI Reference
 
 ```
+# Core pipeline
 aisaac --tier 1              # Full pipeline on review papers
 aisaac --tier 2              # Scale up to high-impact papers
-aisaac --compare-only        # Re-run analysis on existing DB (no extraction cost)
+aisaac --compare-only        # Re-run analysis on existing DB
 aisaac --status              # Show pipeline state and DB summary
 aisaac --conjectures         # List all conjectures with status
-aisaac --validate            # Check recall against known connections
-aisaac --investigate 3       # Deep-dive into conjecture #3
 aisaac --reset               # Reset pipeline state for fresh run
+
+# Premise discovery (which assumptions to question?)
+aisaac --premises            # Full premise pipeline: assumptions → contradictions → shifts
+aisaac --assumptions         # List extracted assumptions by theory
+aisaac --contradictions      # Show where theories' premises clash
+aisaac --convergences        # Show premise-independent results
+aisaac --obstacles           # Obstacles per theory + universal obstacles
+aisaac --premise-report      # Full premise report
+aisaac --premise-report --problem "spectral dimension universality"
+
+# Breakthrough pattern matching (what does history tell us?)
+aisaac --symptoms            # Detect breakthrough-preceding symptoms (no API)
+aisaac --historical-match    # Find closest historical breakthrough pattern
+aisaac --breakthrough-report # Full analysis with historical pattern matching
+
+# Pure math analysis (no LLM, no API cost)
+aisaac --interrogate         # Sympy analysis: symmetries, coefficients, limits
+aisaac --analyze             # Numerical prediction table + gap analysis
+
+# Advanced
+aisaac --structured-extract  # Re-extract with per-equation classification
+aisaac --cite-check          # Citation-aware novelty (Semantic Scholar)
+aisaac --investigate 3       # Deep-dive into conjecture #3
+aisaac --validate            # Check recall against known connections
 ```
 
 ---

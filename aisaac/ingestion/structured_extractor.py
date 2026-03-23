@@ -109,11 +109,23 @@ class StructuredExtractor:
         sorted_eqs = sorted(raw_equations, key=eq_priority)
         selected = sorted_eqs[:max_equations]
 
-        extracted = []
-        for i, eq in enumerate(selected):
-            log.debug(f"  Classifying eq {i+1}/{len(selected)}: {eq.latex[:50]}...")
+        # Classify equations in parallel (6 workers, throttled)
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import threading
+        import time as _time
 
-            classification = self._classify_equation(
+        _rate_lock = threading.Lock()
+        _last_call = [0.0]
+        MIN_INTERVAL = 4.5  # stay under 15 RPM
+
+        def _classify_one(eq):
+            with _rate_lock:
+                now = _time.time()
+                wait = MIN_INTERVAL - (now - _last_call[0])
+                if wait > 0:
+                    _time.sleep(wait)
+                _last_call[0] = _time.time()
+            return eq, self._classify_equation(
                 title=title,
                 theory_tags=", ".join(theory_tags) if isinstance(theory_tags, list) else theory_tags,
                 equation_latex=eq.latex,
@@ -123,11 +135,19 @@ class StructuredExtractor:
                 context_after=getattr(eq, "context_after", "")[:200],
             )
 
-            if not classification:
-                continue
+        classifications = []
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            futures = {pool.submit(_classify_one, eq): eq for eq in selected}
+            for future in as_completed(futures):
+                try:
+                    eq, classification = future.result()
+                    if classification and classification.get("is_key_result"):
+                        classifications.append((eq, classification))
+                except Exception:
+                    pass
 
-            if not classification.get("is_key_result"):
-                continue
+        extracted = []
+        for eq, classification in classifications:
 
             # Build ExtractedFormula from classification
             ef = ExtractedFormula(

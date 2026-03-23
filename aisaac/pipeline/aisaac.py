@@ -723,6 +723,9 @@ Examples:
   aisaac --obstacles           Show obstacles per theory
   aisaac --premise-report      Generate full premise report
   aisaac --premise-report --problem "spectral dimension universality"
+  aisaac --symptoms              Detect breakthrough symptoms in current data
+  aisaac --historical-match      Find closest historical breakthrough pattern
+  aisaac --breakthrough-report   Full breakthrough analysis
   aisaac --compare-only        Re-run comparison on existing DB
   aisaac --analyze             Numerical table + prediction gaps (no API)
   aisaac --cite-check          Build citation graph + find novel uncited matches
@@ -763,6 +766,14 @@ Examples:
         help="Show premise-independent convergent results")
     parser.add_argument("--obstacles", action="store_true",
         help="Show obstacles per theory and shared obstacles")
+    parser.add_argument("--interrogate", action="store_true",
+        help="Run equation interrogator: pure sympy analysis of all formulas (no LLM, no API cost)")
+    parser.add_argument("--symptoms", action="store_true",
+        help="Detect breakthrough-preceding symptoms in current field (no API cost)")
+    parser.add_argument("--historical-match", action="store_true",
+        help="Find closest historical breakthrough pattern match")
+    parser.add_argument("--breakthrough-report", action="store_true",
+        help="Full breakthrough analysis with historical pattern matching")
     parser.add_argument("--premise-report", action="store_true",
         help="Generate full premise report")
     parser.add_argument("--problem", type=str, default="",
@@ -1198,6 +1209,116 @@ Examples:
                 console.print(f"  [{o['obstacle_type']}]{univ} {o['description'][:80]}")
                 if o.get("what_it_might_mean"):
                     console.print(f"    → Clue: {o['what_it_might_mean'][:60]}")
+        return
+
+    if args.interrogate:
+        from ..premise.equation_interrogator import EquationInterrogator
+        console.print(Panel.fit(
+            "[bold cyan]Equation Interrogator (pure sympy, no LLM)[/bold cyan]",
+            border_style="cyan",
+        ))
+
+        interrogator = EquationInterrogator(pipeline.kb)
+        anomalies = interrogator.run_all()
+
+        if not anomalies:
+            console.print("  No mathematical anomalies found.")
+        else:
+            console.print(f"\n  [bold]Found {len(anomalies)} mathematical anomalies:[/bold]\n")
+            for i, a in enumerate(anomalies[:30], 1):
+                color = "green" if a.significance > 0.7 else "yellow" if a.significance > 0.4 else "dim"
+                theories = ", ".join(a.theories_involved)
+                console.print(Panel(
+                    f"[bold]{a.description}[/bold]\n\n"
+                    f"Type: {a.anomaly_type}\n"
+                    f"Theories: {theories}\n"
+                    f"Significance: {a.significance:.2f}\n"
+                    + (f"Details: {json.dumps(a.details, indent=2, default=str)[:300]}" if a.details else ""),
+                    border_style=color,
+                ))
+        return
+
+    # ── Breakthrough symptoms ─────────────────────────────────
+    if args.symptoms:
+        from ..breakthrough.detector import SymptomDetector
+        from rich.table import Table as RichTable
+        console.print(Panel.fit(
+            "[bold cyan]Breakthrough Symptom Detection (no API cost)[/bold cyan]",
+            border_style="cyan",
+        ))
+
+        detector = SymptomDetector(pipeline.kb)
+        symptoms = detector.detect_all()
+
+        if not symptoms:
+            console.print("  No breakthrough-preceding symptoms detected.")
+        else:
+            table = RichTable(title=f"Detected Symptoms ({len(symptoms)} total)")
+            table.add_column("Type", width=30)
+            table.add_column("Confidence", justify="right", width=10)
+            table.add_column("Description", width=45)
+            table.add_column("Theories", width=30)
+
+            for s in sorted(symptoms, key=lambda s: s.confidence, reverse=True):
+                conf_color = "green" if s.confidence > 0.7 else "yellow" if s.confidence > 0.4 else "dim"
+                table.add_row(
+                    s.symptom_type.name,
+                    f"[{conf_color}]{s.confidence:.2f}[/{conf_color}]",
+                    s.description[:45],
+                    ", ".join(s.theories_involved[:3]),
+                )
+            console.print(table)
+        return
+
+    # ── Historical match ──────────────────────────────────────
+    if args.historical_match:
+        from ..breakthrough.detector import SymptomDetector
+        from ..breakthrough.matcher import BreakthroughMatcher
+        from ..breakthrough.dataset import build_dataset
+
+        console.print(Panel.fit(
+            "[bold cyan]Historical Breakthrough Pattern Matching[/bold cyan]",
+            border_style="cyan",
+        ))
+
+        detector = SymptomDetector(pipeline.kb)
+        symptoms = detector.detect_all()
+        console.print(f"  Detected {len(symptoms)} symptoms in current field")
+
+        matcher = BreakthroughMatcher(pipeline.kb)
+        matches = matcher.find_closest_historical(top_k=5)
+
+        if not matches:
+            console.print("  No historical matches found.")
+        else:
+            for m in matches:
+                similarity = m.get("similarity", 0.0)
+                sim_color = "green" if similarity > 0.7 else "yellow" if similarity > 0.4 else "dim"
+                console.print(Panel(
+                    f"[bold]{m.get('field', '?')} ({m.get('year', '?')})[/bold]\n"
+                    f"Person: {m.get('person', '?')}\n\n"
+                    f"[red]Wrong premise:[/red] {m.get('old_premise', '?')}\n"
+                    f"[green]The fix:[/green] {m.get('new_premise', '?')}\n\n"
+                    f"Similarity: [{sim_color}]{similarity:.2f}[/{sim_color}]",
+                    border_style=sim_color,
+                ))
+        return
+
+    # ── Full breakthrough report ──────────────────────────────
+    if args.breakthrough_report:
+        from ..breakthrough.report import BreakthroughReport
+        console.print(Panel.fit(
+            "[bold cyan]Full Breakthrough Analysis[/bold cyan]",
+            border_style="cyan",
+        ))
+
+        report = BreakthroughReport(pipeline.kb)
+        report.generate()
+        report.print_report()
+
+        md_path = DATA_DIR / "breakthrough_report.md"
+        report.save_markdown(md_path)
+        console.print(f"\n  [green]Markdown report saved to {md_path}[/green]")
         return
 
     if args.premise_report:

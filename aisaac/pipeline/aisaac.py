@@ -716,15 +716,19 @@ def main():
 Examples:
   aisaac --tier 1              Run full pipeline on review papers
   aisaac --tier 2              Scale up to high-impact papers
+  aisaac --premises            Run premise discovery (extract assumptions, find contradictions, generate shifts)
+  aisaac --assumptions         List all extracted assumptions by theory
+  aisaac --contradictions      Show contradictions between theories
+  aisaac --convergences        Show premise-independent convergent results
+  aisaac --obstacles           Show obstacles per theory
+  aisaac --premise-report      Generate full premise report
+  aisaac --premise-report --problem "spectral dimension universality"
   aisaac --compare-only        Re-run comparison on existing DB
-  aisaac --analyze             Numerical table + prediction gaps + novelty check (no API)
+  aisaac --analyze             Numerical table + prediction gaps (no API)
   aisaac --cite-check          Build citation graph + find novel uncited matches
   aisaac --status              Show pipeline state and DB summary
-  aisaac --investigate 3       Deep-dive into conjecture #3
-  aisaac --investigate-top 5   Deep-dive into top 5 conjectures
-  aisaac --validate            Check known connections recall
-  aisaac --reset               Reset pipeline state (re-run from scratch)
   aisaac --conjectures         List all conjectures with status
+  aisaac --reset               Reset pipeline state
         """,
     )
     parser.add_argument(
@@ -749,6 +753,20 @@ Examples:
         help="Build citation graph from Semantic Scholar and find novel uncited formula matches")
     parser.add_argument("--structured-extract", action="store_true",
         help="Re-extract formulas using per-equation structured classification (more accurate, more API calls)")
+    parser.add_argument("--premises", action="store_true",
+        help="Run full premise discovery: extract assumptions, find contradictions, generate premise shifts")
+    parser.add_argument("--assumptions", action="store_true",
+        help="List all extracted assumptions grouped by theory")
+    parser.add_argument("--contradictions", action="store_true",
+        help="Show contradictions between theories' assumptions")
+    parser.add_argument("--convergences", action="store_true",
+        help="Show premise-independent convergent results")
+    parser.add_argument("--obstacles", action="store_true",
+        help="Show obstacles per theory and shared obstacles")
+    parser.add_argument("--premise-report", action="store_true",
+        help="Generate full premise report")
+    parser.add_argument("--problem", type=str, default="",
+        help="Focus premise report on a specific problem (e.g., 'spectral dimension universality')")
     parser.add_argument("--reset", action="store_true",
         help="Reset pipeline state (allows re-running from scratch)")
     parser.add_argument("--db", type=str, default=str(DB_PATH),
@@ -1015,6 +1033,179 @@ Examples:
                 console.print(f"    → {len(formulas)} key results from {len(raw_eqs)} equations")
 
         console.print(f"\n  [green]Total: {total_extracted} key results extracted via structured classification[/green]")
+        return
+
+    # ── Premise Discovery ────────────────────────────────────
+    if args.premises:
+        console.print(Panel.fit(
+            "[bold cyan]AIsaac Premise Discovery Engine[/bold cyan]",
+            border_style="cyan",
+        ))
+
+        from ..premise.assumption_extractor import AssumptionExtractor
+        from ..premise.contradiction_finder import ContradictionFinder
+        from ..premise.convergence_analyzer import ConvergenceAnalyzer
+        from ..premise.shared_failure_analyzer import SharedFailureAnalyzer
+        from ..premise.obstacle_cataloger import ObstacleCataloger
+        from ..premise.reframer import PremiseReframer as Reframer
+        from ..premise.premise_ranker import PremiseRanker
+
+        # Phase 1: Extract assumptions
+        console.print("\n[bold]Phase 1: Extracting assumptions from papers...[/bold]")
+        ae = AssumptionExtractor(pipeline.kb)
+        n = ae.extract_all_unprocessed()
+        console.print(f"  Extracted {n} assumptions")
+
+        # Phase 2: Find contradictions
+        console.print("\n[bold]Phase 2: Finding contradictions between theories...[/bold]")
+        cf = ContradictionFinder(pipeline.kb)
+        contradictions = cf.find_all()
+        console.print(f"  Found {len(contradictions)} contradictions")
+
+        # Phase 3: Find convergences
+        console.print("\n[bold]Phase 3: Analyzing convergent results...[/bold]")
+        ca = ConvergenceAnalyzer(pipeline.kb)
+        convergences = ca.analyze_all()
+        independent = [c for c in convergences if c.is_premise_independent]
+        console.print(f"  Found {len(convergences)} convergences, {len(independent)} premise-independent")
+
+        # Phase 4: Shared failure analysis
+        console.print("\n[bold]Phase 4: Analyzing shared failures...[/bold]")
+        sfa = SharedFailureAnalyzer(pipeline.kb)
+        shared = sfa.find_shared_assumptions()
+        n_shared = len(shared.shared_assumptions) if hasattr(shared, 'shared_assumptions') else 0
+        n_droppable = len(shared.droppable_candidates) if hasattr(shared, 'droppable_candidates') else 0
+        console.print(f"  Found {n_shared} shared assumptions, {n_droppable} droppable candidates")
+
+        # Phase 5: Catalog obstacles
+        console.print("\n[bold]Phase 5: Cataloging obstacles...[/bold]")
+        oc = ObstacleCataloger(pipeline.kb)
+        n_obs = oc.extract_all_unprocessed()
+        obstacles = pipeline.kb.get_obstacles()
+        universal_obs = [o for o in obstacles if o.get("is_universal")]
+        console.print(f"  Cataloged {len(obstacles)} obstacles, {len(universal_obs)} universal")
+
+        # Phase 6: Generate premise shifts
+        console.print("\n[bold]Phase 6: Generating premise shifts...[/bold]")
+        reframer = Reframer(pipeline.kb)
+        shifts = reframer.generate_shifts(problem="quantum gravity")
+        console.print(f"  Generated {len(shifts)} premise shifts")
+
+        # Phase 7: Rank premise shifts
+        console.print("\n[bold]Phase 7: Ranking premise shifts...[/bold]")
+        ranker = PremiseRanker(pipeline.kb)
+        ranked = ranker.rank_all()
+
+        # ranked is list of RankingResult dataclasses — get the DB rows for display
+        all_shifts = pipeline.kb.get_premise_shifts(min_score=0.0)
+        all_shifts.sort(key=lambda s: s.get("score", 0), reverse=True)
+        top = [s for s in all_shifts if s.get("score", 0) > 0.5]
+        console.print(f"  Top premise shifts (score > 0.5): {len(top)}")
+
+        for s in all_shifts[:10]:
+            score = s.get("score", 0)
+            color = "green" if score > 0.6 else "yellow" if score > 0.4 else "dim"
+            console.print(Panel(
+                f"[bold]{s.get('proposed_shift', '')}[/bold]\n\n"
+                f"Current premise: {s.get('current_premise', '')}\n"
+                f"Type: {s.get('shift_type', '')}\n"
+                f"Historical analog: {s.get('historical_analog', '')}\n"
+                f"Score: {score:.2f}",
+                border_style=color,
+            ))
+
+        return
+
+    if args.assumptions:
+        assumptions = pipeline.kb.get_assumptions()
+        if not assumptions:
+            console.print("No assumptions extracted. Run: aisaac --premises")
+            return
+
+        from collections import defaultdict
+        by_theory = defaultdict(list)
+        for a in assumptions:
+            by_theory[a["theory_slug"]].append(a)
+
+        for theory, alist in sorted(by_theory.items()):
+            console.print(f"\n[bold]{theory}[/bold] ({len(alist)} assumptions)")
+            for a in alist[:10]:
+                fund = {"core": "[red]core[/red]", "auxiliary": "[yellow]aux[/yellow]", "universal": "[dim]univ[/dim]"}
+                f_label = fund.get(a.get("how_fundamental", ""), a.get("how_fundamental", ""))
+                console.print(f"  [{a['assumption_type']}] {f_label} {a['assumption_text'][:80]}")
+            if len(alist) > 10:
+                console.print(f"  ... and {len(alist) - 10} more")
+        return
+
+    if args.contradictions:
+        contradictions = pipeline.kb.get_contradictions()
+        if not contradictions:
+            console.print("No contradictions found. Run: aisaac --premises")
+            return
+
+        table = Table(title=f"Contradictions ({len(contradictions)} total)")
+        table.add_column("Theory A", width=20)
+        table.add_column("Theory B", width=20)
+        table.add_column("Severity", width=12)
+        table.add_column("Description", width=60)
+
+        severity_styles = {"fundamental": "bold red", "moderate": "yellow", "technical": "dim"}
+        for c in contradictions:
+            sev = c.get("severity", "moderate")
+            style = severity_styles.get(sev, "")
+            table.add_row(
+                c["theory_a"], c["theory_b"],
+                f"[{style}]{sev}[/{style}]",
+                c["description"][:60],
+            )
+        console.print(table)
+        return
+
+    if args.convergences:
+        ca = ConvergenceAnalyzer(pipeline.kb)
+        results = ca.analyze_all()
+        if not results:
+            console.print("No convergences found. Run: aisaac --premises")
+            return
+
+        for r in results:
+            strength_color = {"strong": "green", "moderate": "yellow", "weak": "dim"}.get(r.strength, "")
+            console.print(Panel(
+                f"[bold]{r.quantity_type}[/bold]\n"
+                f"Theories agree: {', '.join(r.theories_agree)}\n"
+                f"Premise-independent: {'YES' if r.is_premise_independent else 'NO'}\n"
+                f"Shared assumptions: {len(r.shared_assumptions)}\n"
+                f"{r.implication}",
+                border_style=strength_color,
+            ))
+        return
+
+    if args.obstacles:
+        obstacles = pipeline.kb.get_obstacles()
+        if not obstacles:
+            console.print("No obstacles cataloged. Run: aisaac --premises")
+            return
+
+        from collections import defaultdict
+        by_theory = defaultdict(list)
+        for o in obstacles:
+            by_theory[o["theory_slug"]].append(o)
+
+        for theory, olist in sorted(by_theory.items()):
+            console.print(f"\n[bold]{theory}[/bold]")
+            for o in olist:
+                univ = " [red](UNIVERSAL)[/red]" if o.get("is_universal") else ""
+                console.print(f"  [{o['obstacle_type']}]{univ} {o['description'][:80]}")
+                if o.get("what_it_might_mean"):
+                    console.print(f"    → Clue: {o['what_it_might_mean'][:60]}")
+        return
+
+    if args.premise_report:
+        from ..premise.report_generator import PremiseReportGenerator
+        gen = PremiseReportGenerator(pipeline.kb)
+        problem = args.problem or "quantum gravity"
+        console.print(f"\n[bold]Generating premise report for: {problem}[/bold]")
+        gen.generate(problem)
         return
 
     # ── Compare only ─────────────────────────────────────────

@@ -214,12 +214,64 @@ class KnowledgeBase:
         notes TEXT DEFAULT ''
     );
 
+    CREATE TABLE IF NOT EXISTS assumptions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        paper_id INTEGER NOT NULL REFERENCES papers(id),
+        theory_slug TEXT NOT NULL,
+        assumption_text TEXT NOT NULL,
+        assumption_type TEXT NOT NULL DEFAULT 'implicit',
+        is_stated INTEGER DEFAULT 1,
+        category TEXT DEFAULT '',
+        how_fundamental TEXT DEFAULT 'auxiliary',
+        what_if_wrong TEXT DEFAULT '',
+        related_quantity TEXT DEFAULT '',
+        confidence REAL DEFAULT 0.0
+    );
+
+    CREATE TABLE IF NOT EXISTS contradictions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        assumption_a_id INTEGER REFERENCES assumptions(id),
+        assumption_b_id INTEGER REFERENCES assumptions(id),
+        theory_a TEXT NOT NULL,
+        theory_b TEXT NOT NULL,
+        description TEXT NOT NULL,
+        resolution_candidates TEXT DEFAULT '[]',
+        severity TEXT DEFAULT 'moderate'
+    );
+
+    CREATE TABLE IF NOT EXISTS obstacles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        theory_slug TEXT NOT NULL,
+        obstacle_type TEXT NOT NULL,
+        description TEXT NOT NULL,
+        paper_ids TEXT DEFAULT '[]',
+        is_universal INTEGER DEFAULT 0,
+        what_it_might_mean TEXT DEFAULT ''
+    );
+
+    CREATE TABLE IF NOT EXISTS premise_shifts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        problem TEXT NOT NULL,
+        current_premise TEXT NOT NULL,
+        proposed_shift TEXT NOT NULL,
+        shift_type TEXT NOT NULL,
+        evidence_for TEXT DEFAULT '',
+        evidence_against TEXT DEFAULT '',
+        affected_theories TEXT DEFAULT '[]',
+        historical_analog TEXT DEFAULT '',
+        score REAL DEFAULT 0.0
+    );
+
     CREATE INDEX IF NOT EXISTS idx_formulas_theory ON formulas(theory_slug);
     CREATE INDEX IF NOT EXISTS idx_formulas_quantity ON formulas(quantity_type);
     CREATE INDEX IF NOT EXISTS idx_formulas_type ON formulas(formula_type);
     CREATE INDEX IF NOT EXISTS idx_predictions_quantity ON predictions(quantity_type);
     CREATE INDEX IF NOT EXISTS idx_predictions_theory ON predictions(theory_slug);
     CREATE INDEX IF NOT EXISTS idx_papers_theory ON papers(theory_tags);
+    CREATE INDEX IF NOT EXISTS idx_assumptions_theory ON assumptions(theory_slug);
+    CREATE INDEX IF NOT EXISTS idx_assumptions_category ON assumptions(category);
+    CREATE INDEX IF NOT EXISTS idx_obstacles_theory ON obstacles(theory_slug);
+    CREATE INDEX IF NOT EXISTS idx_premise_shifts_score ON premise_shifts(score);
     """
 
     def __init__(self, db_path: str | Path):
@@ -422,6 +474,121 @@ class KnowledgeBase:
                 values,
             )
             self.conn.commit()
+
+    # ── Assumptions ────────────────────────────────────────────────
+
+    def insert_assumption(
+        self, paper_id: int, theory_slug: str, assumption_text: str,
+        assumption_type: str = "implicit", is_stated: int = 1,
+        category: str = "", how_fundamental: str = "auxiliary",
+        what_if_wrong: str = "", confidence: float = 0.0,
+    ) -> int:
+        with self._lock:
+            cur = self.conn.execute(
+                """INSERT INTO assumptions
+                   (paper_id, theory_slug, assumption_text, assumption_type,
+                    is_stated, category, how_fundamental, what_if_wrong, confidence)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (paper_id, theory_slug, assumption_text, assumption_type,
+                 is_stated, category, how_fundamental, what_if_wrong, confidence),
+            )
+            self.conn.commit()
+            return cur.lastrowid
+
+    def get_assumptions(self, theory_slug: str | None = None,
+                        category: str | None = None) -> list[dict]:
+        clauses, params = [], []
+        if theory_slug:
+            clauses.append("theory_slug = ?")
+            params.append(theory_slug)
+        if category:
+            clauses.append("category = ?")
+            params.append(category)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = self.conn.execute(
+            f"SELECT * FROM assumptions{where}", params
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    # ── Contradictions ────────────────────────────────────────────
+
+    def insert_contradiction(
+        self, assumption_a_id: int | None, assumption_b_id: int | None,
+        theory_a: str, theory_b: str, description: str,
+        resolution_candidates: str = "[]", severity: str = "moderate",
+    ) -> int:
+        with self._lock:
+            cur = self.conn.execute(
+                """INSERT INTO contradictions
+                   (assumption_a_id, assumption_b_id, theory_a, theory_b,
+                    description, resolution_candidates, severity)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (assumption_a_id, assumption_b_id, theory_a, theory_b,
+                 description, resolution_candidates, severity),
+            )
+            self.conn.commit()
+            return cur.lastrowid
+
+    def get_contradictions(self) -> list[dict]:
+        rows = self.conn.execute("SELECT * FROM contradictions").fetchall()
+        return [dict(r) for r in rows]
+
+    # ── Obstacles ─────────────────────────────────────────────────
+
+    def insert_obstacle(
+        self, theory_slug: str, obstacle_type: str, description: str,
+        paper_ids: str = "[]", is_universal: int = 0,
+        what_it_might_mean: str = "",
+    ) -> int:
+        with self._lock:
+            cur = self.conn.execute(
+                """INSERT INTO obstacles
+                   (theory_slug, obstacle_type, description, paper_ids,
+                    is_universal, what_it_might_mean)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (theory_slug, obstacle_type, description, paper_ids,
+                 is_universal, what_it_might_mean),
+            )
+            self.conn.commit()
+            return cur.lastrowid
+
+    def get_obstacles(self, theory_slug: str | None = None) -> list[dict]:
+        if theory_slug:
+            rows = self.conn.execute(
+                "SELECT * FROM obstacles WHERE theory_slug = ?", (theory_slug,)
+            ).fetchall()
+        else:
+            rows = self.conn.execute("SELECT * FROM obstacles").fetchall()
+        return [dict(r) for r in rows]
+
+    # ── Premise Shifts ────────────────────────────────────────────
+
+    def insert_premise_shift(
+        self, problem: str, current_premise: str, proposed_shift: str,
+        shift_type: str, evidence_for: str = "", evidence_against: str = "",
+        affected_theories: str = "[]", historical_analog: str = "",
+        score: float = 0.0,
+    ) -> int:
+        with self._lock:
+            cur = self.conn.execute(
+                """INSERT INTO premise_shifts
+                   (problem, current_premise, proposed_shift, shift_type,
+                    evidence_for, evidence_against, affected_theories,
+                    historical_analog, score)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (problem, current_premise, proposed_shift, shift_type,
+                 evidence_for, evidence_against, affected_theories,
+                 historical_analog, score),
+            )
+            self.conn.commit()
+            return cur.lastrowid
+
+    def get_premise_shifts(self, min_score: float = 0.0) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM premise_shifts WHERE score >= ? ORDER BY score DESC",
+            (min_score,),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     # ── Stats ────────────────────────────────────────────────────
 

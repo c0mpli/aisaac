@@ -1,17 +1,25 @@
 """
-Resilient LLM Client — supports 3 backends.
+Resilient LLM Client — supports 5 backends with agent-specific routing.
 
-Backend 1: ANTHROPIC API (needs ANTHROPIC_API_KEY, pay-per-token)
-Backend 2: CLAUDE CODE CLI (uses Pro/Max subscription, FREE with sub)
-Backend 3: OPENAI-COMPATIBLE PROXY (e.g., CLIProxyAPI, uses subscription)
+Backend 1: ANTHROPIC API (needs ANTHROPIC_API_KEY)
+Backend 2: CLAUDE CODE CLI (uses Pro/Max subscription, FREE)
+Backend 3: OPENAI-COMPATIBLE PROXY (e.g., CLIProxyAPI)
+Backend 4: GEMINI (needs GEMINI_API_KEY) — google-genai package
+Backend 5: OPENAI (needs OPENAI_API_KEY) — openai package
 
-Priority:
-  1. ANTHROPIC_API_KEY set → API
-  2. `claude` CLI found → Claude Code subprocess
-  3. AISAAC_PROXY_URL set → OpenAI-compatible proxy
+Agent routing: each pipeline phase can specify a preferred backend+model.
+Fallback chain: if preferred fails, try next available.
 
-For subscription users: install Claude Code, run `claude login`,
-then AIsaac auto-detects it. Zero API cost.
+Default routing (set via AGENT_ROUTING or override per-call):
+  assumption_extraction  → gemini-2.5-flash (cheap, fast)
+  contradiction_finding  → gemini-2.5-pro (reasoning)
+  convergence            → gemini-2.5-pro
+  shared_failure         → gemini-2.5-pro
+  obstacle_extraction    → gemini-2.5-flash (cheap, fast)
+  reframing              → gpt-4.1 (creative)
+  premise_ranking        → no LLM (pure computation)
+  extraction             → anthropic (existing default)
+  normalization          → anthropic (existing default)
 """
 from __future__ import annotations
 
@@ -24,6 +32,15 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
+
+# Auto-load .env if present
+_env_path = Path(__file__).resolve().parents[2] / ".env"
+if _env_path.exists():
+    for line in _env_path.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, _, val = line.partition("=")
+            os.environ.setdefault(key.strip(), val.strip())
 from typing import Optional
 
 from .config import ANTHROPIC_MODEL, ANTHROPIC_MAX_TOKENS, CACHE_DIR
@@ -35,25 +52,63 @@ class Backend:
     API = "api"
     CLAUDE_CODE = "claude_code"
     PROXY = "proxy"
+    GEMINI = "gemini"
+    OPENAI = "openai"
+
+
+# Agent routing: phase → (backend, model)
+# Override with env var AISAAC_AGENT_ROUTING=phase:backend:model,...
+DEFAULT_AGENT_ROUTING = {
+    "assumption_extraction": (Backend.GEMINI, "gemini-2.5-flash"),
+    "contradiction_finding": (Backend.GEMINI, "gemini-2.5-pro"),
+    "convergence": (Backend.GEMINI, "gemini-2.5-pro"),
+    "shared_failure": (Backend.GEMINI, "gemini-2.5-pro"),
+    "obstacle_extraction": (Backend.GEMINI, "gemini-2.5-flash"),
+    "obstacle_universality": (Backend.GEMINI, "gemini-2.5-pro"),
+    "reframing": (Backend.OPENAI, "gpt-4.1"),
+    "premise_tracing": (Backend.GEMINI, "gemini-2.5-pro"),
+    # Existing phases keep Anthropic as default
+    "extraction": (Backend.API, ANTHROPIC_MODEL),
+    "normalization": (Backend.API, ANTHROPIC_MODEL),
+}
 
 
 def detect_backend() -> str:
+    """Detect primary (default) backend."""
     if os.environ.get("ANTHROPIC_API_KEY"):
         log.info("Backend: Anthropic API (ANTHROPIC_API_KEY)")
         return Backend.API
     if shutil.which("claude"):
         log.info("Backend: Claude Code CLI (subscription)")
         return Backend.CLAUDE_CODE
+    if os.environ.get("GEMINI_API_KEY"):
+        log.info("Backend: Gemini API (GEMINI_API_KEY)")
+        return Backend.GEMINI
+    if os.environ.get("OPENAI_API_KEY"):
+        log.info("Backend: OpenAI API (OPENAI_API_KEY)")
+        return Backend.OPENAI
     if os.environ.get("AISAAC_PROXY_URL"):
         log.info(f"Backend: Proxy ({os.environ['AISAAC_PROXY_URL']})")
         return Backend.PROXY
     raise RuntimeError(
         "No LLM backend found. Options:\n"
-        "  1. export ANTHROPIC_API_KEY=sk-ant-...   (API, pay-per-token)\n"
-        "  2. npm i -g @anthropic-ai/claude-code && claude login   (subscription, FREE)\n"
-        "  3. export AISAAC_PROXY_URL=http://localhost:8317/v1   (proxy)\n"
-        "\nSubscription users: option 2 is best."
+        "  1. export ANTHROPIC_API_KEY=sk-ant-...   (Anthropic API)\n"
+        "  2. export GEMINI_API_KEY=...             (Gemini API)\n"
+        "  3. export OPENAI_API_KEY=...             (OpenAI API)\n"
+        "  4. npm i -g @anthropic-ai/claude-code && claude login   (subscription, FREE)\n"
+        "  5. export AISAAC_PROXY_URL=http://localhost:8317/v1   (proxy)\n"
     )
+
+
+def _detect_available_backends() -> dict[str, bool]:
+    """Check which backends have credentials configured."""
+    return {
+        Backend.API: bool(os.environ.get("ANTHROPIC_API_KEY")),
+        Backend.GEMINI: bool(os.environ.get("GEMINI_API_KEY")),
+        Backend.OPENAI: bool(os.environ.get("OPENAI_API_KEY")),
+        Backend.CLAUDE_CODE: bool(shutil.which("claude")),
+        Backend.PROXY: bool(os.environ.get("AISAAC_PROXY_URL")),
+    }
 
 
 # ── Cache ────────────────────────────────────────────────────────
@@ -265,6 +320,86 @@ class ProxyBackend:
         return text, u.get("prompt_tokens", 0), u.get("completion_tokens", 0)
 
 
+# ── Backend: Gemini ──────────────────────────────────────────────
+
+class GeminiBackend:
+    """Google Gemini via google-genai package."""
+
+    def __init__(self):
+        try:
+            from google import genai
+        except ImportError:
+            raise RuntimeError("Install google-genai: uv pip install google-genai")
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            raise RuntimeError("Set GEMINI_API_KEY environment variable")
+        self.client = genai.Client(api_key=api_key)
+
+    def complete(self, messages, model, max_tokens, temperature, system=None):
+        from google.genai import types
+
+        # Build contents from messages
+        contents = []
+        for msg in messages:
+            content = msg.get("content", "")
+            if isinstance(content, list):
+                content = "\n".join(p.get("text", "") for p in content if p.get("type") == "text")
+            role = "user" if msg.get("role") == "user" else "model"
+            contents.append(types.Content(role=role, parts=[types.Part(text=content)]))
+
+        config = types.GenerateContentConfig(
+            temperature=temperature,
+            max_output_tokens=max_tokens,
+        )
+        if system:
+            config.system_instruction = system
+
+        resp = self.client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=config,
+        )
+
+        text = resp.text or ""
+        usage = getattr(resp, "usage_metadata", None)
+        inp = getattr(usage, "prompt_token_count", 0) if usage else 0
+        out = getattr(usage, "candidates_token_count", 0) if usage else 0
+        return text, inp, out
+
+
+# ── Backend: OpenAI ──────────────────────────────────────────────
+
+class OpenAIBackend:
+    """OpenAI API via openai package."""
+
+    def __init__(self):
+        try:
+            import openai
+        except ImportError:
+            raise RuntimeError("Install openai: uv pip install openai")
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("Set OPENAI_API_KEY environment variable")
+        self.client = openai.OpenAI(api_key=api_key)
+
+    def complete(self, messages, model, max_tokens, temperature, system=None):
+        api_msgs = []
+        if system:
+            api_msgs.append({"role": "system", "content": system})
+        api_msgs.extend(messages)
+
+        resp = self.client.chat.completions.create(
+            model=model,
+            messages=api_msgs,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+
+        text = resp.choices[0].message.content or ""
+        u = resp.usage
+        return text, (u.prompt_tokens if u else 0), (u.completion_tokens if u else 0)
+
+
 class RateLimitError(Exception):
     pass
 
@@ -293,21 +428,72 @@ class ResilientClient:
         self.cache = ResponseCache() if use_cache else None
         self.cost_tracker = CostTracker()
         self.cost_tracker.backend = self.backend_type
+        self._available = _detect_available_backends()
 
-        if self.backend_type == Backend.API:
-            self._backend = APIBackend()
-        elif self.backend_type == Backend.CLAUDE_CODE:
-            self._backend = ClaudeCodeBackend()
-        elif self.backend_type == Backend.PROXY:
-            self._backend = ProxyBackend()
-        else:
-            raise ValueError(f"Unknown backend: {self.backend_type}")
+        # Initialize primary backend
+        self._backend = self._create_backend(self.backend_type)
+
+        # Lazily initialized secondary backends for agent routing
+        self._backends: dict[str, object] = {self.backend_type: self._backend}
+
+        # Parse agent routing from env or use defaults
+        self._routing = dict(DEFAULT_AGENT_ROUTING)
+        env_routing = os.environ.get("AISAAC_AGENT_ROUTING", "")
+        if env_routing:
+            for entry in env_routing.split(","):
+                parts = entry.strip().split(":")
+                if len(parts) == 3:
+                    self._routing[parts[0]] = (parts[1], parts[2])
+
+    def _create_backend(self, backend_type: str) -> object:
+        """Create a backend instance. Returns None if unavailable."""
+        try:
+            if backend_type == Backend.API:
+                return APIBackend()
+            elif backend_type == Backend.CLAUDE_CODE:
+                return ClaudeCodeBackend()
+            elif backend_type == Backend.PROXY:
+                return ProxyBackend()
+            elif backend_type == Backend.GEMINI:
+                return GeminiBackend()
+            elif backend_type == Backend.OPENAI:
+                return OpenAIBackend()
+        except Exception as e:
+            log.debug(f"Failed to create {backend_type} backend: {e}")
+            return None
+        return None
+
+    def _get_backend(self, backend_type: str) -> object | None:
+        """Get or lazily create a backend."""
+        if backend_type not in self._backends:
+            self._backends[backend_type] = self._create_backend(backend_type)
+        return self._backends.get(backend_type)
+
+    def _resolve_backend_for_phase(self, phase: str) -> tuple[object, str]:
+        """Resolve which backend + model to use for a given phase.
+
+        Returns (backend_instance, model_name).
+        Falls back through: preferred → primary → any available.
+        """
+        # Check if this phase has a routing preference
+        if phase in self._routing:
+            pref_backend_type, pref_model = self._routing[phase]
+            if self._available.get(pref_backend_type):
+                backend = self._get_backend(pref_backend_type)
+                if backend:
+                    return backend, pref_model
+
+        # Fallback to primary backend
+        return self._backend, ANTHROPIC_MODEL
 
     def complete(self, messages: list[dict], model: str | None = None,
                  max_tokens: int | None = None, temperature: float = 0.2,
                  system: str | None = None, phase: str = "unknown") -> str:
-        model = model or ANTHROPIC_MODEL
+        # Resolve backend + model for this phase
+        routed_backend, routed_model = self._resolve_backend_for_phase(phase)
+        model = model or routed_model
         max_tokens = max_tokens or ANTHROPIC_MAX_TOKENS
+        active_backend = routed_backend or self._backend
 
         if self.cache:
             cached = self.cache.get(model, temperature, messages)
@@ -317,7 +503,7 @@ class ResilientClient:
         last_err = None
         for attempt in range(self.max_retries):
             try:
-                text, inp, out = self._backend.complete(
+                text, inp, out = active_backend.complete(
                     messages, model, max_tokens, temperature, system,
                 )
                 self.cost_tracker.record(phase, inp, out)

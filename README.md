@@ -233,6 +233,18 @@ aisaac/
 
 ---
 
+## Current Bottleneck: Verified Data
+
+The system works end-to-end. The architecture is complete. What's missing is **hand-verified numerical predictions** from actual publications.
+
+LLMs extract wrong numbers: CDT's spectral dimension is 1.80 ± 0.25 in the original paper but our DB says 1.5 (from a fit formula). NCG's result depends on which model (κ-Minkowski gives 3, Connes gives 2). Every downstream analysis — symbolic regression, pattern matching, coefficient comparison — inherits these errors.
+
+**We need a physicist to verify ~50 numbers.** See [WANTED.md](WANTED.md) for what's needed and why it matters.
+
+With verified data, the system can run symbolic regression (PySR) across theories to find mathematical patterns in the predictions themselves — Planck's method applied to theoretical physics. Nobody has done this because nobody has a clean cross-theory prediction database. We have the database; it just needs verification.
+
+---
+
 ## What to Expect
 
 **The system reliably finds known connections.** If two theories in your field agree on a prediction, AIsaac will surface it. This validates that the pipeline works.
